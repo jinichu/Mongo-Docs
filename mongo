@@ -1,0 +1,30 @@
+const repl = require('repl');
+const r = repl.start('Mongo Docs> ');
+
+r.context.db = new Proxy({}, {
+  get: function(target, prop, receiver) {
+    return new Collection(prop);
+  }
+});
+
+r.context.exit = function() {
+  console.log("bye");
+  process.exit();
+}
+
+class Collection {
+  constructor(collectionName) {
+  }
+
+  insertOne(document) {
+    console.log("Inserted: " + document);
+  }
+
+  find(query) {
+    console.log(query);
+  }
+
+  deleteOne(query) {
+    console.log("Deleted: " + query);
+  }
+}
