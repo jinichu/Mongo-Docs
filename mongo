@@ -189,73 +189,14 @@ class Collection {
     }
 
     async find(input) {
-        // Check if input is a valid JSON.
-        try {
-            var document = JSON.stringify(input);
-            JSON.parse(document)
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-
-        // Check if we can query on the document ID.
-        if (input.hasOwnProperty('_id')) {
-            const res = await drive.files.get({
-                auth: oAuth2Client,
-                fileId: input['_id']
-            });
-            if (res instanceof Error) {
-                console.error(res);
-                return null;
-            } else {
-                // TODO: Do stuff with the returned file.
-                const files = [];
-                files.push(res.data.id);
-                return files;
-            }
-        } else {
-            // Construct our query with the given input.
-            let query = "";
-            if (!collections) {
-                loadCollections();
-            }
-            if (collections.hasOwnProperty(this.collectionName)) {
-                Object.keys(input).forEach(function(field, index) {
-                    if (index == 0) {
-                        query += "parents in " + "'" + collections[this.collectionName] + "' and "
-                    }
-                    if (index != 0) {
-                        query += " and "
-                    }
-                    query+= "fullText contains " + "'" + field + ": " + input[field] + "'";
-                }.bind(this));
-
-                const res = await drive.files.list({
-                    auth: oAuth2Client,
-                    q: query,
-                    fields: 'files',
-                    spaces: 'drive'
-                });
-
-                if (res instanceof Error) {
-                    console.error(res);
-                } else {
-                    const files = [];
-                    res.data.files.forEach(function (file) {
-                        console.log(file);
-                        files.push(file.id);
-                    });
-                    return files;
-                }
-            } else {
-                console.log("Collection '" + this.collectionName + "' has no documents.")
-                return null;
-            }
+        var files = [];
+        const res = await findHelper(input, files, this.collectionName);
+        if (res instanceof Error) {
+            console.log(res);
         }
     }
 
-    deleteOne(query) {
-        console.log("Deleted: " + query);
+    deleteOne(input) {
     }
 }
 
@@ -268,4 +209,65 @@ function loadCollections() {
         }
     }
     collections = JSON.parse(fs.readFileSync('collections.json'));
+}
+
+async function findHelper(input, files, collName) {
+    // Check if input is a valid JSON.
+    try {
+        var document = JSON.stringify(input);
+        JSON.parse(document)
+    } catch (e) {
+        console.error(e);
+        files = null;
+    }
+
+    // Check if we can query on the document ID.
+    if (input.hasOwnProperty('_id')) {
+        const res = await drive.files.get({
+            auth: oAuth2Client,
+            fileId: input['_id']
+        });
+        if (res instanceof Error) {
+            console.error(res);
+            return null;
+        } else {
+            files.push(res.data.id);
+        }
+    } else {
+        // Construct our query with the given input.
+        let query = "";
+        if (!collections) {
+            loadCollections();
+        }
+        if (collections.hasOwnProperty(collName)) {
+            Object.keys(input).forEach(function(field, index) {
+                if (index == 0) {
+                    query += "parents in " + "'" + collections[collName] + "' and "
+                }
+                if (index != 0) {
+                    query += " and "
+                }
+                query+= "fullText contains " + "'" + field + ": " + input[field] + "'";
+            }.bind(this));
+
+            const res = await drive.files.list({
+                auth: oAuth2Client,
+                q: query,
+                fields: 'files',
+                spaces: 'drive'
+            });
+
+            if (res instanceof Error) {
+                console.error(res);
+            } else {
+                res.data.files.forEach(function (file) {
+                    console.log(file);
+                    files.push(file.id);
+                });
+            }
+        } else {
+            console.log("Collection '" + collName + "' has no documents.")
+            files = null;
+        }
+    }
 }
