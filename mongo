@@ -93,21 +93,21 @@ function listFiles(auth) {
 }
  */
 
- const oldEval = r.eval
- r.eval = function(cmd, ctx, filename, callback) {
-   oldEval(cmd, ctx, filename, (err, out) => {
-     if (err) {
-       callback(err)
-       return
-     }
+const oldEval = r.eval;
+r.eval = function(cmd, ctx, filename, callback) {
+    oldEval(cmd, ctx, filename, (err, out) => {
+        if (err) {
+            callback(err);
+            return;
+        }
 
-     if (out && out.then) {
-       out.then((v) => callback(null, v))
-     } else {
-       callback(null, out);
-     }
-   })
- }
+        if (out && out.then) {
+            out.then((v) => callback(null, v))
+        } else {
+            callback(null, out);
+        }
+    });
+}
 
 r.context.db = new Proxy({}, {
     get: function (target, prop, receiver) {
@@ -135,21 +135,21 @@ class Collection {
             return;
         }
         // Create collections.json if it doesn't exist. This is where we store all the collection names.
-        var collectionNamesFile;
+        let collectionNamesFile;
         if (!fs.existsSync('collections.json')) {
-            var error = fs.writeFileSync('collections.json', "{}")
+            const error = fs.writeFileSync('collections.json', "{}");
             if (error instanceof Error) {
                 throw error;
             }
         }
-        var collections = JSON.parse(fs.readFileSync('collections.json'));
+        let collections = JSON.parse(fs.readFileSync('collections.json'));
         if (!collections.hasOwnProperty(this.collectionName)) {
             // This collection doesn't have a Drive folder yet, so we create one.
-            var folderMetadata = {
+            const folderMetadata = {
                 'name': this.collectionName,
                 'mimeType': 'application/vnd.google-apps.folder'
             };
-            var res = await drive.files.create({
+            const res = await drive.files.create({
                 auth: oAuth2Client,
                 resource: folderMetadata,
                 fields: "id"
@@ -159,25 +159,25 @@ class Collection {
                 return;
             } else {
                 collections[this.collectionName] = res.data.id;
-                var error = fs.writeFileSync('collections.json', JSON.stringify(collections))
+                const error = fs.writeFileSync('collections.json', JSON.stringify(collections));
                 if (error instanceof Error) {
                     throw error;
                 }
             }
         }
         // Upload the document.
-        var uuid = Date.now();
-        var fileMetadata = {
+        const uuid = Date.now();
+        const fileMetadata = {
             'name': uuid,
             'mimeType': 'application/vnd.google-apps.document',
             parents: [collections[this.collectionName]]
         };
-        var media = {
+        const media = {
             mimeType: 'text/plain',
             body: document
         };
 
-        var res = await drive.files.create({
+        const res = await drive.files.create({
             auth: oAuth2Client,
             resource: fileMetadata,
             media: media,
@@ -187,10 +187,10 @@ class Collection {
         if (res instanceof Error) {
             console.error(res);
         } else {
-            var result = {
+            const result = {
                 "acknowledged" : true,
                 "insertedId" : res.data.id
-            }
+            };
             console.log(JSON.stringify(result, null, 2));
         }
     }
@@ -205,11 +205,11 @@ class Collection {
             return;
         }
 
-        var query = "";
+        let query = "";
         if (input.hasOwnProperty("_id")) {
             query += "name=" + input[_id];
         }
-        var res = drive.files.list({
+        const res = drive.files.list({
             q: query,
             spaces: "drive"
         })
