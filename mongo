@@ -107,7 +107,7 @@ r.eval = function(cmd, ctx, filename, callback) {
             callback(null, out);
         }
     });
-}
+};
 
 r.context.db = new Proxy({}, {
     get: function (target, prop, receiver) {
@@ -118,7 +118,7 @@ r.context.db = new Proxy({}, {
 r.context.exit = function () {
     console.log("bye");
     process.exit();
-}
+};
 
 class Collection {
     constructor(collectionName) {
@@ -188,8 +188,8 @@ class Collection {
             console.error(res);
         } else {
             const result = {
-                "acknowledged" : true,
-                "insertedId" : res.data.id
+                'acknowledged' : true,
+                'insertedId' : res.data.id
             };
             console.log(JSON.stringify(result, null, 2));
         }
@@ -206,20 +206,19 @@ class Collection {
         }
 
         let query = "";
-        if (input.hasOwnProperty("_id")) {
-            query += "name=" + input[_id];
-        }
-        const res = drive.files.list({
-            q: query,
-            spaces: "drive"
-        })
-
-        if (res instanceof Error) {
-            console.error(res);
-        } else {
-            res.files.forEach(function (file) {
-
+        // Check if we can query on the document ID.
+        if (input.hasOwnProperty('_id')) {
+            const res = await drive.files.get({
+                auth: oAuth2Client,
+                fileId: input['_id']
             });
+            if (res instanceof Error) {
+                console.error(res);
+            } else {
+                console.log(res);
+            }
+        } else {
+            // TODO: Construct our query with the given input.
         }
     }
 
