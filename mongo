@@ -3,6 +3,7 @@ const r = repl.start('Mongo Docs> ');
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
+const http = require('http');
 var drive;
 var oAuth2Client;
 var collections;
@@ -189,7 +190,7 @@ class Collection {
     }
 
     async find(input) {
-        var files = [];
+        let files = [];
         const res = await findHelper(input, files, this.collectionName);
         if (res instanceof Error) {
             console.log(res);
@@ -202,16 +203,23 @@ class Collection {
         if (res instanceof Error) {
             console.log(res);
         }
-        if (files == null) {
-            return;
+        let numDeleted = 0;
+        if (files.length > 0) {
+            const dRes = await drive.files.delete({
+                auth: oAuth2Client,
+                fileId: files[0].id
+            }).catch(e => { console.log(e) });
+            if (dRes instanceof Error) {
+                console.log(res);
+                return;
+            }
+            numDeleted = 1;
         }
-        const dRes = await drive.files.delete({
-            auth: oAuth2Client,
-            fileId: files[0]
-        }).catch(e => { console.log(e) });
-        if (dRes instanceof Error) {
-            console.log(res);
-        }
+        const result = {
+            'acknowledged' : true,
+            'deletedCount' : numDeleted
+        };
+        console.log(JSON.stringify(result).split(':').join(' : '));
     }
 
     async deleteMany(input) {
@@ -220,18 +228,23 @@ class Collection {
         if (res instanceof Error) {
             console.log(res);
         }
-        if (files == null) {
-            return;
-        }
+        let numDeleted = 0;
         for (let idx in files) {
             const dRes = await drive.files.delete({
                 auth: oAuth2Client,
-                fileId: files[idx]
+                fileId: files[idx].id
             }).catch(e => { console.log(e) });
             if (dRes instanceof Error) {
                 console.log(res);
+            } else {
+                numDeleted++;
             }
         }
+        const result = {
+            'acknowledged': true,
+            'deletedCount': numDeleted
+        };
+        console.log(JSON.stringify(result).split(':').join(' : '));
     }
 }
 
@@ -253,7 +266,6 @@ async function findHelper(input, files, collName) {
         JSON.parse(document)
     } catch (e) {
         console.error(e);
-        files = null;
     }
 
     // Check if we can query on the document ID.
@@ -264,10 +276,9 @@ async function findHelper(input, files, collName) {
         }).catch(e => { console.log(e) });
         if (res instanceof Error) {
             console.error(res);
-            return null;
-        } else {
-            files.push(res.data.id);
+            return;
         }
+        files.push(res.data.id);
     } else {
         // Construct our query with the given input.
         let query = "";
@@ -276,10 +287,10 @@ async function findHelper(input, files, collName) {
         }
         if (collections.hasOwnProperty(collName)) {
             Object.keys(input).forEach(function(field, index) {
-                if (index == 0) {
+                if (index === 0) {
                     query += "parents in " + "'" + collections[collName] + "' and "
                 }
-                if (index != 0) {
+                if (index !== 0) {
                     query += " and "
                 }
                 query+= "fullText contains " + "'" + field + ": " + input[field] + "'";
@@ -294,15 +305,20 @@ async function findHelper(input, files, collName) {
 
             if (res instanceof Error) {
                 console.error(res);
-            } else {
-                res.data.files.forEach(function (file) {
-                    console.log(file);
-                    files.push(file.id);
-                });
+                return;
             }
+            res.data.files.forEach(function (file) {
+                files.push(file);
+            });
         } else {
-            console.log("Collection '" + collName + "' has no documents.")
-            files = null;
+            console.log("Collection '" + collName + "' has no documents.");
         }
     }
+}
+
+async function readFile(file, out) {
+    let result = "";
+    /*let request = http.get(file.webContentLink, function(response) {
+        response.pipe(file);
+    });*/
 }
