@@ -135,7 +135,9 @@ class Collection {
             console.error(e);
             return;
         }
-        loadCollections();
+        if (!collections) {
+            loadCollections();
+        }
         if (!collections.hasOwnProperty(this.collectionName)) {
             // This collection doesn't have a Drive folder yet, so we create one.
             const folderMetadata = {
