@@ -10,6 +10,9 @@ var oAuth2Client;
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 const TOKEN_PATH = 'credentials.json';
 
+// Turn off returning undefined when the user doesn't enter a command.
+r.ignoreUndefined = true;
+
 // Load client secrets from a local file.
 fs.readFile('client_secret.json', (err, content) => {
     if (err) return console.log('Error loading client secret file:', err);
@@ -90,6 +93,22 @@ function listFiles(auth) {
 }
  */
 
+ const oldEval = r.eval
+ r.eval = function(cmd, ctx, filename, callback) {
+   oldEval(cmd, ctx, filename, (err, out) => {
+     if (err) {
+       callback(err)
+       return
+     }
+
+     if (out && out.then) {
+       out.then((v) => callback(null, v))
+     } else {
+       callback(null, out);
+     }
+   })
+ }
+
 r.context.db = new Proxy({}, {
     get: function (target, prop, receiver) {
         return new Collection(prop);
@@ -106,7 +125,8 @@ class Collection {
         this.collectionName = collectionName;
     }
 
-    insertOne(input) {
+    async insertOne(input) {
+        // Check if input is a valid JSON.
         try {
             var document = JSON.stringify(input);
             JSON.parse(document)
@@ -114,37 +134,93 @@ class Collection {
             console.error(e);
             return;
         }
+        // Create collections.json if it doesn't exist. This is where we store all the collection names.
+        var collectionNamesFile;
+        if (!fs.existsSync('collections.json')) {
+            var error = fs.writeFileSync('collections.json', "{}")
+            if (error instanceof Error) {
+                throw error;
+            }
+        }
+        var collections = JSON.parse(fs.readFileSync('collections.json'));
+        if (!collections.hasOwnProperty(this.collectionName)) {
+            // This collection doesn't have a Drive folder yet, so we create one.
+            var folderMetadata = {
+                'name': this.collectionName,
+                'mimeType': 'application/vnd.google-apps.folder'
+            };
+            var res = await drive.files.create({
+                auth: oAuth2Client,
+                resource: folderMetadata,
+                fields: "id"
+            });
+            if (res instanceof Error) {
+                console.error(res);
+                return;
+            } else {
+                collections[this.collectionName] = res.data.id;
+                var error = fs.writeFileSync('collections.json', JSON.stringify(collections))
+                if (error instanceof Error) {
+                    throw error;
+                }
+            }
+        }
+        // Upload the document.
         var uuid = Date.now();
         var fileMetadata = {
             'name': uuid,
-            'mimeType': 'application/vnd.google-apps.document'
+            'mimeType': 'application/vnd.google-apps.document',
+            parents: [collections[this.collectionName]]
         };
         var media = {
             mimeType: 'text/plain',
             body: document
         };
 
-        drive.files.create({
+        var res = await drive.files.create({
             auth: oAuth2Client,
             resource: fileMetadata,
             media: media,
             fields: 'id'
-        }, function (err, file) {
-            if (err) {
-                console.error(err);
-            } else {
-                var result = {
-                    "acknowledged" : true,
-                    "insertedId" : uuid.toString()
-                }
-                console.log("\n" + JSON.stringify(result, null, 2));
-            }
         });
+
+        if (res instanceof Error) {
+            console.error(res);
+        } else {
+            var result = {
+                "acknowledged" : true,
+                "insertedId" : res.data.id
+            }
+            console.log(JSON.stringify(result, null, 2));
+        }
     }
 
-    find(query) {
+    async find(input) {
+        // Check if input is a valid JSON.
+        try {
+            var document = JSON.stringify(input);
+            JSON.parse(document)
+        } catch (e) {
+            console.error(e);
+            return;
+        }
 
-        console.log(query);
+        var query = "";
+        if (input.hasOwnProperty("_id")) {
+            query += "name=" + input[_id];
+        }
+        var res = drive.files.list({
+            q: query,
+            spaces: "drive"
+        })
+
+        if (res instanceof Error) {
+            console.error(res);
+        } else {
+            res.files.forEach(function (file) {
+
+            });
+        }
     }
 
     deleteOne(query) {
