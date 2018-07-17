@@ -3,7 +3,6 @@ const r = repl.start('Mongo Docs> ');
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
-const http = require('http');
 var drive;
 var oAuth2Client;
 var collections;
@@ -195,6 +194,9 @@ class Collection {
         if (res instanceof Error) {
             console.log(res);
         }
+        for (let idx in files) {
+            const rRes = await readFile(files[idx]);
+        }
     }
 
     async deleteOne(input) {
@@ -219,7 +221,7 @@ class Collection {
             'acknowledged' : true,
             'deletedCount' : numDeleted
         };
-        console.log(JSON.stringify(result).split(':').join(' : '));
+        console.log(fixSpacing(result));
     }
 
     async deleteMany(input) {
@@ -244,7 +246,7 @@ class Collection {
             'acknowledged': true,
             'deletedCount': numDeleted
         };
-        console.log(JSON.stringify(result).split(':').join(' : '));
+        console.log(fixSpacing(result));
     }
 }
 
@@ -270,15 +272,7 @@ async function findHelper(input, files, collName) {
 
     // Check if we can query on the document ID.
     if (input.hasOwnProperty('_id')) {
-        const res = await drive.files.get({
-            auth: oAuth2Client,
-            fileId: input['_id']
-        }).catch(e => { console.log(e) });
-        if (res instanceof Error) {
-            console.error(res);
-            return;
-        }
-        files.push(res.data.id);
+        const res = await findById(input["_id"], files);
     } else {
         // Construct our query with the given input.
         let query = "";
@@ -316,9 +310,36 @@ async function findHelper(input, files, collName) {
     }
 }
 
-async function readFile(file, out) {
-    let result = "";
-    /*let request = http.get(file.webContentLink, function(response) {
-        response.pipe(file);
-    });*/
+async function findById(fileId, files) {
+    const res = await drive.files.get({
+        auth: oAuth2Client,
+        fileId: fileId
+    }).catch(e => { console.log(e) });
+    if (res instanceof Error) {
+        console.error(res);
+        return;
+    }
+    files.push(res.data);
+}
+
+async function readFile(file) {
+    const res = await drive.files.export({
+        auth: oAuth2Client,
+        fileId: file.id,
+        mimeType: "text/plain"
+    });
+    if (res instanceof Error) {
+        console.error(res);
+        return;
+    }
+    let result = JSON.parse(res.data.trim());
+    console.log(fixSpacing(Object.assign({"_id":file.id}, result)));
+}
+
+function fixSpacing(json) {
+    return JSON.stringify(json).split(':').join(' : ')
+        .split('{').join(' { ')
+        .split('}').join(' } ')
+        .split(',').join(', ')
+        .trim();
 }
