@@ -146,7 +146,7 @@ class Collection {
                 auth: oAuth2Client,
                 resource: folderMetadata,
                 fields: "id"
-            });
+            }).catch(e => { console.log(e) });
             if (res instanceof Error) {
                 console.error(res);
                 return;
@@ -175,7 +175,7 @@ class Collection {
             resource: fileMetadata,
             media: media,
             fields: 'id'
-        });
+        }).catch(e => { console.log(e) });
 
         if (res instanceof Error) {
             console.error(res);
@@ -196,7 +196,42 @@ class Collection {
         }
     }
 
-    deleteOne(input) {
+    async deleteOne(input) {
+        let files = [];
+        const res = await findHelper(input, files, this.collectionName);
+        if (res instanceof Error) {
+            console.log(res);
+        }
+        if (files == null) {
+            return;
+        }
+        const dRes = await drive.files.delete({
+            auth: oAuth2Client,
+            fileId: files[0]
+        }).catch(e => { console.log(e) });
+        if (dRes instanceof Error) {
+            console.log(res);
+        }
+    }
+
+    async deleteMany(input) {
+        let files = [];
+        const res = await findHelper(input, files, this.collectionName);
+        if (res instanceof Error) {
+            console.log(res);
+        }
+        if (files == null) {
+            return;
+        }
+        for (let idx in files) {
+            const dRes = await drive.files.delete({
+                auth: oAuth2Client,
+                fileId: files[idx]
+            }).catch(e => { console.log(e) });
+            if (dRes instanceof Error) {
+                console.log(res);
+            }
+        }
     }
 }
 
@@ -226,7 +261,7 @@ async function findHelper(input, files, collName) {
         const res = await drive.files.get({
             auth: oAuth2Client,
             fileId: input['_id']
-        });
+        }).catch(e => { console.log(e) });
         if (res instanceof Error) {
             console.error(res);
             return null;
@@ -255,7 +290,7 @@ async function findHelper(input, files, collName) {
                 q: query,
                 fields: 'files',
                 spaces: 'drive'
-            });
+            }).catch(e => { console.log(e) });
 
             if (res instanceof Error) {
                 console.error(res);
