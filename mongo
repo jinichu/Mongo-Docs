@@ -5,6 +5,7 @@ const readline = require('readline');
 const {google} = require('googleapis');
 var drive;
 var oAuth2Client;
+var collections;
 
 // If modifying these scopes, delete credentials.json.
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
@@ -134,15 +135,7 @@ class Collection {
             console.error(e);
             return;
         }
-        // Create collections.json if it doesn't exist. This is where we store all the collection names.
-        let collectionNamesFile;
-        if (!fs.existsSync('collections.json')) {
-            const error = fs.writeFileSync('collections.json', "{}");
-            if (error instanceof Error) {
-                throw error;
-            }
-        }
-        let collections = JSON.parse(fs.readFileSync('collections.json'));
+        loadCollections();
         if (!collections.hasOwnProperty(this.collectionName)) {
             // This collection doesn't have a Drive folder yet, so we create one.
             const folderMetadata = {
@@ -202,10 +195,9 @@ class Collection {
             JSON.parse(document)
         } catch (e) {
             console.error(e);
-            return;
+            return null;
         }
 
-        let query = "";
         // Check if we can query on the document ID.
         if (input.hasOwnProperty('_id')) {
             const res = await drive.files.get({
@@ -214,15 +206,66 @@ class Collection {
             });
             if (res instanceof Error) {
                 console.error(res);
+                return null;
             } else {
-                console.log(res);
+                // TODO: Do stuff with the returned file.
+                const files = [];
+                files.push(res.data.id);
+                return files;
             }
         } else {
-            // TODO: Construct our query with the given input.
+            // Construct our query with the given input.
+            let query = "";
+            if (!collections) {
+                loadCollections();
+            }
+            if (collections.hasOwnProperty(this.collectionName)) {
+                Object.keys(input).forEach(function(field, index) {
+                    if (index == 0) {
+                        query += "parents in " + "'" + collections[this.collectionName] + "' and "
+                    }
+                    if (index != 0) {
+                        query += " and "
+                    }
+                    query+= "fullText contains " + "'" + field + ": " + input[field] + "'";
+                }.bind(this));
+
+                const res = await drive.files.list({
+                    auth: oAuth2Client,
+                    q: query,
+                    fields: 'files',
+                    spaces: 'drive'
+                });
+
+                if (res instanceof Error) {
+                    console.error(res);
+                } else {
+                    const files = [];
+                    res.data.files.forEach(function (file) {
+                        console.log(file);
+                        files.push(file.id);
+                    });
+                    return files;
+                }
+            } else {
+                console.log("Collection '" + this.collectionName + "' has no documents.")
+                return null;
+            }
         }
     }
 
     deleteOne(query) {
         console.log("Deleted: " + query);
     }
+}
+
+function loadCollections() {
+    let collectionNamesFile;
+    if (!fs.existsSync('collections.json')) {
+        const error = fs.writeFileSync('collections.json', "{}");
+        if (error instanceof Error) {
+            throw error;
+        }
+    }
+    collections = JSON.parse(fs.readFileSync('collections.json'));
 }
