@@ -70,32 +70,24 @@ function getAccessToken(oAuth2Client) {
     });
 }
 
-/**
- * Lists the names and IDs of up to 10 files.
- * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
-
-function listFiles(auth) {
-    const drive = google.drive({version: 'v3', auth});
-    drive.files.list({
-        pageSize: 10,
-        fields: 'nextPageToken, files(id, name)',
-    }, (err, res) => {
-        if (err) return console.log('The API returned an error: ' + err);
-        const files = res.data.files;
-        if (files.length) {
-            console.log('Files:');
-            files.map((file) => {
-                console.log(`${file.name} (${file.id})`);
-            });
-        } else {
-            console.log('No files found.');
-        }
-    });
-}
- */
-
 const oldEval = r.eval;
 r.eval = function(cmd, ctx, filename, callback) {
+    if (cmd.trim() === "show collections") {
+        if (!collections) {
+            loadCollections(null, null).then(() => {
+                Object.keys(collections).forEach(function(field, index) {
+                    console.log(field);
+                });
+                callback();
+            });
+        } else {
+            Object.keys(collections).forEach(function(field, index) {
+                console.log(field);
+            });
+            callback();
+        }
+        return;
+    }
     oldEval(cmd, ctx, filename, (err, out) => {
         if (err) {
             callback(err);
@@ -108,7 +100,7 @@ r.eval = function(cmd, ctx, filename, callback) {
             callback(null, out);
         }
     });
-};
+}; 
 
 r.context.db = new Proxy({}, {
     get: function (target, prop, receiver) {
@@ -136,7 +128,10 @@ class Collection {
             return;
         }
         if (!collections) {
-            loadCollections();
+            const err = await loadCollections(null, null);
+            if (err instanceof Error) {
+                return;
+            }
         }
         if (!collections.hasOwnProperty(this.collectionName)) {
             // This collection doesn't have a Drive folder yet, so we create one.
@@ -153,11 +148,7 @@ class Collection {
                 console.error(res);
                 return;
             } else {
-                collections[this.collectionName] = res.data.id;
-                const error = fs.writeFileSync('collections.json', JSON.stringify(collections));
-                if (error instanceof Error) {
-                    throw error;
-                }
+                const err = await loadCollections(this.collectionName, res.data.id);
             }
         }
         // Upload the document.
@@ -252,15 +243,64 @@ class Collection {
     }
 }
 
-function loadCollections() {
-    let collectionNamesFile;
-    if (!fs.existsSync('collections.json')) {
-        const error = fs.writeFileSync('collections.json', "{}");
-        if (error instanceof Error) {
-            throw error;
+async function loadCollections(collName, folderId) {
+    // Check if collections.json exists on the server.
+    const res = await drive.files.list({
+        auth: oAuth2Client,
+        q: "name='collections.json'",
+        fields: 'files(id)',
+        spaces: 'drive'
+    });
+    if (res instanceof Error) {
+        return;
+    }
+    if (res.data.files.length == 0) {
+        // Create collections.jsons since it doesn't exist.
+        const fileMetadata = {
+            'name': 'collections.json',
+            'mimeType': 'application/vnd.google-apps.document',
+        };
+        const media = {
+            mimeType: 'text/plain',
+            body: "{}"
+        };
+
+        const result = await drive.files.create({
+            auth: oAuth2Client,
+            resource: fileMetadata,
+            media: media,
+            fields: 'id'
+        });
+        if (res instanceof Error) {
+            return;
+        } 
+        collections = {};
+        return;
+    }
+    
+    const result = await drive.files.export({
+        auth: oAuth2Client,
+        fileId: res.data.files[0].id,
+        mimeType: "text/plain"
+    });
+    if (result instanceof Error) {
+        return;
+    }
+    collections = JSON.parse(result.data.trim());
+    if (collName != null && folderId != null) {
+        collections[collName] = folderId;
+        let collectionsStr = JSON.stringify(collections);
+        const r = await drive.files.update({
+            auth: oAuth2Client,
+            fileId: res.data.files[0].id,
+            media: {
+                body: collectionsStr
+            }
+        });
+        if (r instanceof Error) {
+            return;
         }
     }
-    collections = JSON.parse(fs.readFileSync('collections.json'));
 }
 
 async function findHelper(input, files, collName) {
@@ -279,7 +319,7 @@ async function findHelper(input, files, collName) {
         // Construct our query with the given input.
         let query = "";
         if (!collections) {
-            loadCollections();
+            const err = await loadCollections(null, null);
         }
         if (collections.hasOwnProperty(collName)) {
             Object.keys(input).forEach(function(field, index) {
