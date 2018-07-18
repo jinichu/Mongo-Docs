@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+let sleep = require('sleep');
+console.log("Mongo Docs shell version v1.0");
+console.log("connecting to: https://drive.google.com/drive/u/0/my-drive");
 const repl = require('repl');
-const r = repl.start('Mongo Docs> ');
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
@@ -11,9 +13,6 @@ let collections;
 // If modifying these scopes, delete credentials.json.
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 const TOKEN_PATH = 'credentials.json';
-
-// Turn off returning undefined when the user doesn't enter a command.
-r.ignoreUndefined = true;
 
 // Load client secrets from a local file.
 fs.readFile('client_secret.json', (err, content) => {
@@ -70,6 +69,11 @@ function getAccessToken(oAuth2Client) {
         });
     });
 }
+console.log("Mongo Docs server version: 1.0");
+const r = repl.start('Mongo Docs> ');
+
+// Turn off returning undefined when the user doesn't enter a command.
+r.ignoreUndefined = true;
 
 const oldEval = r.eval;
 r.eval = function(cmd, ctx, filename, callback) {
