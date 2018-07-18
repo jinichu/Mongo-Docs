@@ -4,9 +4,9 @@ const r = repl.start('Mongo Docs> ');
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
-var drive;
-var oAuth2Client;
-var collections;
+let drive;
+let oAuth2Client;
+let collections;
 
 // If modifying these scopes, delete credentials.json.
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
@@ -111,9 +111,10 @@ class Collection {
     }
 
     async insertOne(input) {
+        let document;
         // Check if input is a valid JSON.
         try {
-            var document = JSON.stringify(input);
+            document = JSON.stringify(input);
             JSON.parse(document)
         } catch (e) {
             console.error(e);
@@ -122,6 +123,7 @@ class Collection {
         if (!collections) {
             const err = await loadCollections(null, null);
             if (err instanceof Error) {
+                printError(err);
                 return;
             }
         }
@@ -135,18 +137,17 @@ class Collection {
                 auth: oAuth2Client,
                 resource: folderMetadata,
                 fields: "id"
-            }).catch(e => { console.log(e) });
+            });
             if (res instanceof Error) {
-                console.error(res);
+                printError(res);
                 return;
             } else {
-                const err = await loadCollections(this.collectionName, res.data.id);
+                await loadCollections(this.collectionName, res.data.id);
             }
         }
         // Upload the document.
-        const uuid = Date.now();
         const fileMetadata = {
-            'name': uuid,
+            'name': Date.now(),
             'mimeType': 'application/vnd.google-apps.document',
             parents: [collections[this.collectionName]]
         };
@@ -160,10 +161,10 @@ class Collection {
             resource: fileMetadata,
             media: media,
             fields: 'id'
-        }).catch(e => { console.log(e) });
+        });
 
         if (res instanceof Error) {
-            console.error(res);
+            printError(res);
         } else {
             const result = {
                 'acknowledged' : true,
@@ -175,29 +176,23 @@ class Collection {
 
     async find(input) {
         let files = [];
-        const res = await findHelper(input, files, this.collectionName);
-        if (res instanceof Error) {
-            console.log(res);
-        }
+        await findHelper(input, files, this.collectionName);
         for (let idx in files) {
-            const rRes = await readFile(files[idx]);
+            await readFile(files[idx]);
         }
     }
 
     async deleteOne(input) {
         let files = [];
-        const res = await findHelper(input, files, this.collectionName);
-        if (res instanceof Error) {
-            console.log(res);
-        }
+        await findHelper(input, files, this.collectionName);
         let numDeleted = 0;
         if (files.length > 0) {
-            const dRes = await drive.files.delete({
+            const res = await drive.files.delete({
                 auth: oAuth2Client,
                 fileId: files[0].id
-            }).catch(e => { console.log(e) });
-            if (dRes instanceof Error) {
-                console.log(res);
+            });
+            if (res instanceof Error) {
+                printError(res);
                 return;
             }
             numDeleted = 1;
@@ -206,23 +201,20 @@ class Collection {
             'acknowledged' : true,
             'deletedCount' : numDeleted
         };
-        console.log(fixSpacing(result));
+        printJSONFlat(result)
     }
 
     async deleteMany(input) {
         let files = [];
-        const res = await findHelper(input, files, this.collectionName);
-        if (res instanceof Error) {
-            console.log(res);
-        }
+        await findHelper(input, files, this.collectionName);
         let numDeleted = 0;
         for (let idx in files) {
-            const dRes = await drive.files.delete({
+            const res = await drive.files.delete({
                 auth: oAuth2Client,
                 fileId: files[idx].id
-            }).catch(e => { console.log(e) });
-            if (dRes instanceof Error) {
-                console.log(res);
+            });
+            if (res instanceof Error) {
+                printError(res);
             } else {
                 numDeleted++;
             }
@@ -231,7 +223,7 @@ class Collection {
             'acknowledged': true,
             'deletedCount': numDeleted
         };
-        console.log(fixSpacing(result));
+        printJSONFlat(result)
     }
 }
 
@@ -244,9 +236,10 @@ async function loadCollections(collName, folderId) {
         spaces: 'drive'
     });
     if (res instanceof Error) {
+        printError(res);
         return;
     }
-    if (res.data.files.length == 0) {
+    if (res.data.files.length === 0) {
         // Create collections.jsons since it doesn't exist.
         const fileMetadata = {
             'name': 'collections.json',
@@ -263,7 +256,8 @@ async function loadCollections(collName, folderId) {
             media: media,
             fields: 'id'
         });
-        if (res instanceof Error) {
+        if (result instanceof Error) {
+            printError(result);
             return;
         } 
         collections = {};
@@ -276,6 +270,7 @@ async function loadCollections(collName, folderId) {
         mimeType: "text/plain"
     });
     if (result instanceof Error) {
+        printError(result);
         return;
     }
     collections = JSON.parse(result.data.trim());
@@ -290,7 +285,7 @@ async function loadCollections(collName, folderId) {
             }
         });
         if (r instanceof Error) {
-            return;
+            printError(r);
         }
     }
 }
@@ -298,7 +293,7 @@ async function loadCollections(collName, folderId) {
 async function findHelper(input, files, collName) {
     // Check if input is a valid JSON.
     try {
-        var document = JSON.stringify(input);
+        let document = JSON.stringify(input);
         JSON.parse(document)
     } catch (e) {
         console.error(e);
@@ -306,12 +301,12 @@ async function findHelper(input, files, collName) {
 
     // Check if we can query on the document ID.
     if (input.hasOwnProperty('_id')) {
-        const res = await findById(input["_id"], files);
+        await findById(input["_id"], files);
     } else {
         // Construct our query with the given input.
         let query = "";
         if (!collections) {
-            const err = await loadCollections(null, null);
+            await loadCollections(null, null);
         }
         if (collections.hasOwnProperty(collName)) {
             Object.keys(input).forEach(function(field, index) {
@@ -329,10 +324,10 @@ async function findHelper(input, files, collName) {
                 q: query,
                 fields: 'files',
                 spaces: 'drive'
-            }).catch(e => { console.log(e) });
+            });
 
             if (res instanceof Error) {
-                console.error(res);
+                printError(res);
                 return;
             }
             res.data.files.forEach(function (file) {
@@ -348,9 +343,9 @@ async function findById(fileId, files) {
     const res = await drive.files.get({
         auth: oAuth2Client,
         fileId: fileId
-    }).catch(e => { console.log(e) });
+    });
     if (res instanceof Error) {
-        console.error(res);
+        printError(res);
         return;
     }
     files.push(res.data);
@@ -363,17 +358,23 @@ async function readFile(file) {
         mimeType: "text/plain"
     });
     if (res instanceof Error) {
-        console.error(res);
+        printError(res);
         return;
     }
     let result = JSON.parse(res.data.trim());
-    console.log(fixSpacing(Object.assign({"_id":file.id}, result)));
+    printJSONFlat(Object.assign({"_id":file.id}, result))
 }
 
-function fixSpacing(json) {
-    return JSON.stringify(json).split(':').join(' : ')
+function printJSONFlat(json) {
+    console.log(JSON.stringify(json).split(':').join(' : ')
         .split('{').join(' { ')
         .split('}').join(' } ')
         .split(',').join(', ')
-        .trim();
+        .trim());
+}
+
+function printError(e) {
+    console.error("Error", e.stack);
+    console.error("Error", e.name);
+    console.error("Error", e.message);
 }
