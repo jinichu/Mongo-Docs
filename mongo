@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const repl = require('repl');
 const r = repl.start('Mongo Docs> ');
 const fs = require('fs');
@@ -73,20 +74,16 @@ function getAccessToken(oAuth2Client) {
 const oldEval = r.eval;
 r.eval = function(cmd, ctx, filename, callback) {
     if (cmd.trim() === "show collections") {
-        if (!collections) {
-            loadCollections(null, null).then(() => {
-                Object.keys(collections).forEach(function(field, index) {
-                    console.log(field);
-                });
-                callback();
-            });
-        } else {
+        loadCollections(null, null).then(() => {
             Object.keys(collections).forEach(function(field, index) {
                 console.log(field);
             });
             callback();
-        }
+        });
         return;
+    } else if (cmd.trim() === "exit") {
+        console.log("bye");
+        process.exit();
     }
     oldEval(cmd, ctx, filename, (err, out) => {
         if (err) {
@@ -107,11 +104,6 @@ r.context.db = new Proxy({}, {
         return new Collection(prop);
     }
 });
-
-r.context.exit = function () {
-    console.log("bye");
-    process.exit();
-};
 
 class Collection {
     constructor(collectionName) {
