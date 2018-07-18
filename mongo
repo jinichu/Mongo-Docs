@@ -204,6 +204,46 @@ class Collection {
         };
         printJSONFlat(result)
     }
+
+    async updateOne(query, updates) {
+        if (!updates.hasOwnProperty('$set')) {
+            console.log('WriteError: Unknown modifier');
+            return;
+        }
+
+        let files = [];
+        await findHelper(query, files, this.collectionName);
+        let numUpdated = 0;
+        if (files.length > 0) {
+            numUpdated = await updateDoc(updates['$set'], files[0]) ? 1 : 0;
+        }
+        const result = {
+            'acknowledged': true,
+            'matchedCount': files.length > 0 ? 1 : 0,
+            'modifiedCount': numUpdated
+        };
+        printJSONFlat(result);
+    }
+
+    async updateMany(query, updates) {
+        if (!updates.hasOwnProperty('$set')) {
+            console.log('WriteError: Unknown modifier');
+            return;
+        }
+
+        let files = [];
+        await findHelper(query, files, this.collectionName);
+        let numUpdated = 0;
+        for (let idx in files) {
+            numUpdated += await updateDoc(updates['$set'], files[idx]) ? 1 : 0;
+        }
+        const result = {
+            'acknowledged': true,
+            'matchedCount': files.length,
+            'modifiedCount': numUpdated
+        };
+        printJSONFlat(result);
+    }
 }
 
 async function loadCollections(collName, folderId) {
@@ -432,6 +472,42 @@ async function readFile(file) {
     }
     let result = JSON.parse(res.data.trim());
     printJSONFlat(Object.assign({"_id":file.id}, result))
+}
+
+async function updateDoc(updates, file) {
+    const res = await drive.files.export({
+        auth: oAuth2Client,
+        fileId: file.id,
+        mimeType: "text/plain"
+    });
+    if (res instanceof Error) {
+        printError(res);
+        return;
+    }
+
+    let doc = JSON.parse(res.data.trim());
+
+    let updated = false;
+    for (let key in updates) {
+        if (doc.hasOwnProperty(key) && doc[key] !== updates[key]) {
+            updated = true;
+        }
+        doc[key] = updates[key];
+    }
+
+    let docStr = JSON.stringify(doc);
+    const uRes = await drive.files.update({
+        auth: oAuth2Client,
+        fileId: file.id,
+        media: {
+            body: docStr
+        }
+    });
+    if (uRes instanceof Error) {
+        printError(uRes);
+    }
+
+    return updated;
 }
 
 function printJSONFlat(json) {
