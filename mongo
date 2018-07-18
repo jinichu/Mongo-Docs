@@ -97,7 +97,7 @@ r.eval = function(cmd, ctx, filename, callback) {
             callback(null, out);
         }
     });
-}; 
+};
 
 r.context.db = new Proxy({}, {
     get: function (target, prop, receiver) {
@@ -111,66 +111,45 @@ class Collection {
     }
 
     async insertOne(input) {
-        let document;
-        // Check if input is a valid JSON.
-        try {
-            document = JSON.stringify(input);
-            JSON.parse(document)
-        } catch (e) {
-            console.error(e);
+        let insertedIds = [];
+        if (Array.isArray(input)) {
+            console.log("Error: operation passed in cannot be an Array");
             return;
         }
-        if (!collections) {
-            const err = await loadCollections(null, null);
-            if (err instanceof Error) {
-                printError(err);
-                return;
-            }
-        }
-        if (!collections.hasOwnProperty(this.collectionName)) {
-            // This collection doesn't have a Drive folder yet, so we create one.
-            const folderMetadata = {
-                'name': this.collectionName,
-                'mimeType': 'application/vnd.google-apps.folder'
-            };
-            const res = await drive.files.create({
-                auth: oAuth2Client,
-                resource: folderMetadata,
-                fields: "id"
-            });
-            if (res instanceof Error) {
-                printError(res);
-                return;
-            } else {
-                await loadCollections(this.collectionName, res.data.id);
-            }
-        }
-        // Upload the document.
-        const fileMetadata = {
-            'name': Date.now(),
-            'mimeType': 'application/vnd.google-apps.document',
-            parents: [collections[this.collectionName]]
-        };
-        const media = {
-            mimeType: 'text/plain',
-            body: document
-        };
-
-        const res = await drive.files.create({
-            auth: oAuth2Client,
-            resource: fileMetadata,
-            media: media,
-            fields: 'id'
-        });
-
+        const res = await insertHelper(input, this.collectionName, insertedIds);
         if (res instanceof Error) {
             printError(res);
-        } else {
+            return;
+        }
+        if (insertedIds.length > 0) {
             const result = {
                 'acknowledged' : true,
-                'insertedId' : res.data.id
+                'insertedId' : insertedIds[0]
             };
             console.log(JSON.stringify(result, null, 2));
+        }
+    }
+
+    async insert(input) {
+        let insertedIds = [];
+        const res = await insertHelper(input, this.collectionName, insertedIds);
+        if (res instanceof Error) {
+            printError(res);
+            return;
+        }
+        if (insertedIds.length === 1 && (typeof input === "object" && !Array.isArray(input))) {
+            console.log("WriteResult({ \"nInserted\" : 1 })");
+        } else {
+            console.log("BulkWriteResult({\n\t \"writeErrors\" : [ ],\
+                \n\t \"writeConcernErrors\" : [ ],\
+                \n\t \"nInserted\" : " + insertedIds.length + ",\
+                \n\t \"nUpserted\" : 0,\
+                \n\t \"nMatched\" : 0,\
+                \n\t \"nModified\" : 0,\
+                \n\t \"nRemoved\" : 0,\
+                \n\t \"upserted\" : [ ],\
+                \n})"
+            );
         }
     }
 
@@ -259,11 +238,11 @@ async function loadCollections(collName, folderId) {
         if (result instanceof Error) {
             printError(result);
             return;
-        } 
+        }
         collections = {};
         return;
     }
-    
+
     const result = await drive.files.export({
         auth: oAuth2Client,
         fileId: res.data.files[0].id,
@@ -288,6 +267,93 @@ async function loadCollections(collName, folderId) {
             printError(r);
         }
     }
+}
+
+async function insertHelper(input, collName, insertedIds) {
+    let document;
+    // Check if input is a valid JSON.
+    try {
+        document = JSON.stringify(input);
+        JSON.parse(document)
+    } catch (e) {
+        console.error(e);
+        return;
+    }
+    if (!collections) {
+        const err = await loadCollections(null, null);
+        if (err instanceof Error) {
+            printError(err);
+            return;
+        }
+    }
+    if (!collections.hasOwnProperty(collName)) {
+        // This collection doesn't have a Drive folder yet, so we create one.
+        const folderMetadata = {
+            'name': collName,
+            'mimeType': 'application/vnd.google-apps.folder'
+        };
+        const res = await drive.files.create({
+            auth: oAuth2Client,
+            resource: folderMetadata,
+            fields: "id"
+        });
+        if (res instanceof Error) {
+            printError(res);
+            return;
+        } else {
+            await loadCollections(collName, res.data.id);
+        }
+    }
+    // Check if we're inserting one document or many.
+    if (!Array.isArray(input)) {
+        // Insert one.
+        const inOne = await insertOneHelper(document, collName, insertedIds);
+        if (inOne instanceof Error) {
+            console.error(inOne);
+        }
+        return;
+    }
+    // Insert many.
+    for (let i in input) {
+        if (typeof input[i] === "object" && !Array.isArray(input[i])) {
+            try {
+                var documentToInsert = JSON.stringify(input[i]);
+            } catch (e) {
+                console.error(e);
+                return;
+            }
+            const inOne = await insertOneHelper(documentToInsert, collName, insertedIds);
+            if (inOne instanceof Error) {
+                console.error(inOne);
+            }
+        }
+    }
+}
+
+async function insertOneHelper(document, collName, insertedIds) {
+    // Upload the document.
+    const fileMetadata = {
+        'name': Date.now(),
+        'mimeType': 'application/vnd.google-apps.document',
+        parents: [collections[collName]]
+    };
+    const media = {
+        mimeType: 'text/plain',
+        body: document
+    };
+
+    const res = await drive.files.create({
+        auth: oAuth2Client,
+        resource: fileMetadata,
+        media: media,
+        fields: 'id'
+    });
+
+    if (res instanceof Error) {
+        printError(res);
+        return;
+    }
+    insertedIds.push(res.data.id);
 }
 
 async function findHelper(input, files, collName) {
@@ -352,6 +418,9 @@ async function findById(fileId, files) {
 }
 
 async function readFile(file) {
+    if (file.mimeType !== "application/vnd.google-apps.document") {
+        return;
+    }
     const res = await drive.files.export({
         auth: oAuth2Client,
         fileId: file.id,
