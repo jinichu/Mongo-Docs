@@ -165,10 +165,10 @@ class Collection {
         let files = [];
         await findHelper(input, files, this.collectionName);
         let numDeleted = 0;
-        if (files.length > 0) {
+        for (let idx in files) {
             const exp = await drive.files.export({
                 auth: oAuth2Client,
-                fileId: files[0].id,
+                fileId: files[idx].id,
                 mimeType: "text/plain"
             });
             if (exp instanceof Error) {
@@ -180,20 +180,21 @@ class Collection {
             if (filter(input, doc)) {
                 const res = await drive.files.delete({
                     auth: oAuth2Client,
-                    fileId: files[0].id
+                    fileId: files[idx].id
                 });
                 if (res instanceof Error) {
                     printError(res);
-                    return;
+                } else {
+                    numDeleted++;
+                    break;
                 }
-                numDeleted = 1;
             }
         }
         const result = {
             'acknowledged' : true,
             'deletedCount' : numDeleted
         };
-        printJSONFlat(result)
+        printJSONFlat(result);
     }
 
     async deleteMany(input) {
@@ -464,7 +465,6 @@ async function findHelper(input, files, collName) {
                 }
                 query += "fullText contains " + "'" + field + ":'";
             }.bind(this));
-            console.log(query);
             const res = await drive.files.list({
                 auth: oAuth2Client,
                 q: query,
