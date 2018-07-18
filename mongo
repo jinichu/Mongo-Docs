@@ -157,7 +157,7 @@ class Collection {
         let files = [];
         await findHelper(input, files, this.collectionName);
         for (let idx in files) {
-            await readFile(files[idx]);
+            await readFile(files[idx], input);
         }
     }
 
@@ -422,9 +422,19 @@ async function findHelper(input, files, collName) {
                 if (index !== 0) {
                     query += " and "
                 }
-                query+= "fullText contains " + "'" + field + ": " + input[field] + "'";
+                if (typeof input[field] === "object" && !Array.isArray(input[field])) {
+                    // Comparison match.
+                    Object.keys(input[field]).forEach(function(op, idx) {
+                        if (idx !== 0) {
+                            query += " and "
+                        }
+                        query += "fullText contains " + "'" + field + ":'";
+                    });
+                } else {
+                    query += "fullText contains " + "'" + field + ":" + input[field] + "'";
+                }
             }.bind(this));
-
+    
             const res = await drive.files.list({
                 auth: oAuth2Client,
                 q: query,
@@ -457,7 +467,7 @@ async function findById(fileId, files) {
     files.push(res.data);
 }
 
-async function readFile(file) {
+async function readFile(file, input) {
     if (file.mimeType !== "application/vnd.google-apps.document") {
         return;
     }
@@ -471,7 +481,27 @@ async function readFile(file) {
         return;
     }
     let result = JSON.parse(res.data.trim());
-    printJSONFlat(Object.assign({"_id":file.id}, result))
+    for (let field in input) {
+        if (input.hasOwnProperty(field)) {
+            // Nested field object means comparison query operator.
+            if (typeof input[field] === "object" && !Array.isArray(input[field])) {
+                for (let op in input[field]) {
+                    if (input[field].hasOwnProperty(op)) {
+                        if ((op === "$gt" && result[field] <= input[field][op])
+                            || (op === "$gte" && result[field] < input[field][op])
+                            || (op === "$lt" && result[field] >= input[field][op])
+                            || (op === "$lte" && result[field] > input[field][op])
+                            || (op === "$eq" && result[field] !== input[field][op])
+                            || (op === "$neq" && result[field] === input[field][op]))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    printJSONFlat(Object.assign({"_id":file.id}, result));
 }
 
 async function updateDoc(updates, file) {
