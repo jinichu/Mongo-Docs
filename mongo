@@ -166,15 +166,28 @@ class Collection {
         await findHelper(input, files, this.collectionName);
         let numDeleted = 0;
         if (files.length > 0) {
-            const res = await drive.files.delete({
+            const exp = await drive.files.export({
                 auth: oAuth2Client,
-                fileId: files[0].id
+                fileId: files[0].id,
+                mimeType: "text/plain"
             });
-            if (res instanceof Error) {
-                printError(res);
+            if (exp instanceof Error) {
+                printError(exp);
                 return;
             }
-            numDeleted = 1;
+
+            let doc = JSON.parse(exp.data.trim());
+            if (filter(input, doc)) {
+                const res = await drive.files.delete({
+                    auth: oAuth2Client,
+                    fileId: files[0].id
+                });
+                if (res instanceof Error) {
+                    printError(res);
+                    return;
+                }
+                numDeleted = 1;
+            }
         }
         const result = {
             'acknowledged' : true,
@@ -188,14 +201,27 @@ class Collection {
         await findHelper(input, files, this.collectionName);
         let numDeleted = 0;
         for (let idx in files) {
-            const res = await drive.files.delete({
+            const exp = await drive.files.export({
                 auth: oAuth2Client,
-                fileId: files[idx].id
+                fileId: files[idx].id,
+                mimeType: "text/plain"
             });
-            if (res instanceof Error) {
-                printError(res);
-            } else {
-                numDeleted++;
+            if (exp instanceof Error) {
+                printError(exp);
+                return;
+            }
+
+            let doc = JSON.parse(exp.data.trim());
+            if (filter(input, doc)) {
+                const res = await drive.files.delete({
+                    auth: oAuth2Client,
+                    fileId: files[idx].id
+                });
+                if (res instanceof Error) {
+                    printError(res);
+                } else {
+                    numDeleted++;
+                }
             }
         }
         const result = {
@@ -213,13 +239,20 @@ class Collection {
 
         let files = [];
         await findHelper(query, files, this.collectionName);
+        let numMatched = 0;
         let numUpdated = 0;
         if (files.length > 0) {
-            numUpdated = await updateDoc(updates['$set'], files[0]) ? 1 : 0;
+            const res = await updateDoc(updates['$set'], files[0], query);
+            if (res[0]) {
+                numMatched = 1;
+            }
+            if (res[1]) {
+                numUpdated = 1;
+            }
         }
         const result = {
             'acknowledged': true,
-            'matchedCount': files.length > 0 ? 1 : 0,
+            'matchedCount': numMatched,
             'modifiedCount': numUpdated
         };
         printJSONFlat(result);
@@ -233,13 +266,20 @@ class Collection {
 
         let files = [];
         await findHelper(query, files, this.collectionName);
+        let numMatched = 0;
         let numUpdated = 0;
         for (let idx in files) {
-            numUpdated += await updateDoc(updates['$set'], files[idx]) ? 1 : 0;
+            const res = await updateDoc(updates['$set'], files[idx], query);
+            if (res[0]) {
+                numMatched++;
+            }
+            if (res[1]) {
+                numUpdated++;
+            }
         }
         const result = {
             'acknowledged': true,
-            'matchedCount': files.length,
+            'matchedCount': numMatched,
             'modifiedCount': numUpdated
         };
         printJSONFlat(result);
@@ -422,19 +462,9 @@ async function findHelper(input, files, collName) {
                 if (index !== 0) {
                     query += " and "
                 }
-                if (typeof input[field] === "object" && !Array.isArray(input[field])) {
-                    // Comparison match.
-                    Object.keys(input[field]).forEach(function(op, idx) {
-                        if (idx !== 0) {
-                            query += " and "
-                        }
-                        query += "fullText contains " + "'" + field + ":'";
-                    });
-                } else {
-                    query += "fullText contains " + "'" + field + ":" + input[field] + "'";
-                }
+                query += "fullText contains " + "'" + field + ":'";
             }.bind(this));
-    
+            console.log(query);
             const res = await drive.files.list({
                 auth: oAuth2Client,
                 q: query,
@@ -481,6 +511,51 @@ async function readFile(file, input) {
         return;
     }
     let result = JSON.parse(res.data.trim());
+    if (filter(input, result)) {
+        printJSONFlat(Object.assign({"_id":file.id}, result));
+    }
+}
+
+async function updateDoc(updates, file, query) {
+    const res = await drive.files.export({
+        auth: oAuth2Client,
+        fileId: file.id,
+        mimeType: "text/plain"
+    });
+    if (res instanceof Error) {
+        printError(res);
+        return;
+    }
+
+    let doc = JSON.parse(res.data.trim());
+
+    let updated = [false, false];
+    if (filter(query, doc)) {
+        updated[0] = true;
+        for (let key in updates) {
+            if (!doc.hasOwnProperty(key) || doc[key] !== updates[key]) {
+                updated[1] = true;
+                doc[key] = updates[key];
+            }
+        }
+
+        let docStr = JSON.stringify(doc);
+        const uRes = await drive.files.update({
+            auth: oAuth2Client,
+            fileId: file.id,
+            media: {
+                body: docStr
+            }
+        });
+        if (uRes instanceof Error) {
+            printError(uRes);
+        }
+    }
+
+    return updated;
+}
+
+function filter(input, result) {
     for (let field in input) {
         if (input.hasOwnProperty(field)) {
             // Nested field object means comparison query operator.
@@ -494,50 +569,18 @@ async function readFile(file, input) {
                             || (op === "$eq" && result[field] !== input[field][op])
                             || (op === "$neq" && result[field] === input[field][op]))
                         {
-                            return;
+                            return false;
                         }
                     }
+                }
+            } else {
+                if (result[field] !== input[field]) {
+                    return false;
                 }
             }
         }
     }
-    printJSONFlat(Object.assign({"_id":file.id}, result));
-}
-
-async function updateDoc(updates, file) {
-    const res = await drive.files.export({
-        auth: oAuth2Client,
-        fileId: file.id,
-        mimeType: "text/plain"
-    });
-    if (res instanceof Error) {
-        printError(res);
-        return;
-    }
-
-    let doc = JSON.parse(res.data.trim());
-
-    let updated = false;
-    for (let key in updates) {
-        if (doc.hasOwnProperty(key) && doc[key] !== updates[key]) {
-            updated = true;
-        }
-        doc[key] = updates[key];
-    }
-
-    let docStr = JSON.stringify(doc);
-    const uRes = await drive.files.update({
-        auth: oAuth2Client,
-        fileId: file.id,
-        media: {
-            body: docStr
-        }
-    });
-    if (uRes instanceof Error) {
-        printError(uRes);
-    }
-
-    return updated;
+    return true;
 }
 
 function printJSONFlat(json) {
