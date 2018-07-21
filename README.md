@@ -8,30 +8,30 @@ This project was done for MongoDB Skunkworks 9.
 
 Lists the user's collections (equivalent to the user's folders on Google Drive).
 
-`db.<collection_name>.insertOne(<document>)`
+`db.<collection name>.insertOne(<document>)`
 
 Inserts a single document to the specified collection.
 
-`db.<collection_name>.insert(<document or array of documents>)`
+`db.<collection name>.insert(<document or array of documents>)`
 
 Inserts one or an array of documents to the specified collection.
 
-`db.<collection_name>.find(<query>)`
+`db.<collection name>.find(<query>)`
 
 Finds all documents that match the query. Supports querying on the document's unique ID as well as querying on other document fields using`$gt`, `$gte`, `$lt`, `$lte`, `$eq`, `$neq`. 
 
-`db.<collection_name>.updateOne(<filter>, <update>)`
+`db.<collection name>.updateOne(<filter>, <update>)`
 
 Updates a single document in the specified collection based on the filter (the first document that matches the filter).
 
-`db.<collection_name>.updateMany(<filter>, <update>)`
+`db.<collection name>.updateMany(<filter>, <update>)`
 
 Updates all the documents in the specified collection based on the filter.
 
-`db.<collection_name>.deleteOne(<filter>)`
+`db.<collection name>.deleteOne(<filter>)`
 
 Deletes a single document in the specified collection based on the filter (the first document that matches the filter).
 
-`db.<collection_name>.deleteMany(<filter>)`
+`db.<collection name>.deleteMany(<filter>)`
 
 Deletes all the documents in the specified collection based on the filter.
