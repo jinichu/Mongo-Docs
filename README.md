@@ -16,6 +16,10 @@ Inserts a single document to the specified collection.
 
 Inserts one or an array of documents to the specified collection.
 
+`db.<collection_name>.find(<query>)`
+
+Finds all documents that match the query. Supports querying on the document's unique ID as well as querying on other document fields using`$gt`, `$gte`, `$lt`, `$lte`, `$eq`, `$neq`. 
+
 `db.<collection_name>.updateOne(<filter>, <update>)`
 
 Updates a single document in the specified collection based on the filter (the first document that matches the filter).
@@ -31,7 +35,3 @@ Deletes a single document in the specified collection based on the filter (the f
 `db.<collection_name>.deleteMany(<filter>)`
 
 Deletes all the documents in the specified collection based on the filter.
-
-`db.<collection_name>.find(<query>)`
-
-Finds all documents that match the query. Supports querying on the document's unique ID as well as querying on other document fields using`$gt`, `$gte`, `$lt`, `$lte`, `$eq`, `$neq`. 
